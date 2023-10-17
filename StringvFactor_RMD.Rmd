@@ -1,0 +1,245 @@
+---
+title: "Lec12_StringvFactor"
+author: "Andy Turner"
+date: "2023-10-17"
+output: github_document
+---
+
+## Strings vs. Factors
+
+Strings: character variables without much of an order
+Factor: categorical variable, usually ordered
+
+`stringr` is a common package
+
+Concatenating: joining snippets into a long string
+Shortening, subsetting, truncating
+Changing cases
+Replacing one string segment with another
+
+`forcats` (built into the tidyverse as well)
+
+Most of what we are doing with factors is controlling the behind the scenes in R. We are controlling the order potentially to get the correct ordering. 
+
+```{r}
+library(rvest)
+library(tidyverse)
+library(p8105.datasets)
+```
+
+## Strings and manipulations
+
+```{r}
+string_vec= c("my", "name", "is", "andy")
+
+str_detect(string_vec, "andy")
+str_detect(string_vec, "y")
+
+str_replace(string_vec, "andy", "Andy")
+```
+str_detect: do we see this thing in the vector we are asking about? And the answer is no, no, no, yes! 
+- Case sensitive as is R
+
+str_replace: string replace - replaces the first text with the second text
+
+```{r}
+string_vec = c(
+  "i think we all rule for participating",
+  "i think i have been caught",
+  "i think this will be quite fun actually",
+  "it will be fun, i think"
+  )
+
+str_detect(string_vec, "i think")
+str_detect(string_vec, "^i think")
+```
+`^` in this context indicates the beginning of a line. we only want "i think" that start the line!
+
+```{r}
+string_vec = c(
+  "Time for a Pumpkin Spice Latte!",
+  "went to the #pumpkinpatch last weekend",
+  "Pumpkin Pie is obviously the best pie",
+  "SMASHING PUMPKINS -- LIVE IN CONCERT!!"
+  )
+
+str_detect(string_vec,"[Pp]umpkin")
+```
+`[Pp]` in this context lets us look for both "Pumpkin" and "pumpkin" at the same time!
+
+```{r}
+string_vec = c(
+  '7th inning stretch',
+  '1st half soon to begin. Texas won the toss.',
+  'she is 5 feet 4 inches tall',
+  '3AM - cant sleep :('
+  )
+
+str_detect(string_vec, "[0-9]") #1
+str_detect(string_vec, "^[0-9]") #2
+str_detect(string_vec, "^[0-9][a-z]") #3
+str_detect(string_vec, "^[0-9][a-zA-Z]) #4
+        
+```
+1. Only matching ones with a number
+2. Starts with a number
+3. Starts with number then followed by lower case
+4. Starts with number then followed by any letter
+
+```{r}
+string_vec = c(
+  'Its 7:11 in the evening',
+  'want to go to 7-11?',
+  'my flight is AA711',
+  'NetBios: scanning ip 203.167.114.66'
+  )
+
+str_detect(string_vec, "7.11")
+```
+`.` in this context says anything, so the phrase above says match anything that has 7 then 11 with anything between the two numbers. Anything that is one digit
+
+```{r}
+string_vec = c(
+  'The CI is [2, 5]',
+  ':-]',
+  ':-[',
+  'I found the answer on pages [6-7]'
+  )
+
+str_detect(string_vec, "\\[")
+```
+If we wanted to find a `[` we need to designate it as a special character to make it clear that we want to find the square bracket. We need to use a `\` to show it is a special character and then because `\` itself is a special character we need another `\`. Therefore, format for special character is `\\[`
+
+"\\[[0-9]" means that we want to find any string that has [# within the string. 
+
+## Factors
+
+```{r}
+vec_sex= c("male", "male", "female", "female")
+vec_sex_f= factor(c("male", "male", "female", "female"))
+
+as.numeric(vec_sex_f)
+
+vec_sex_f= fct_relevel(vec_sex_f, "male")
+vec_sex_f
+```
+`fct_relevel` our way to relevel the orders of the factors, seems harder if you have more than 2 levels. 
+
+All factor functions start with `fct_`
+
+```{r}
+nsduh_url = "http://samhda.s3-us-gov-west-1.amazonaws.com/s3fs-public/field-uploads/2k15StateFiles/NSDUHsaeShortTermCHG2015.htm"
+
+table_marj = 
+  read_html(nsduh_url) |> 
+  html_table() |> 
+  first() |>
+  slice(-1)
+```
+
+**Cleaning up data**
+```{r}
+marj_df = 
+  table_marj |>
+  select(-contains("P Value")) |>
+  pivot_longer(
+    -State,
+    names_to = "age_year", 
+    values_to = "percent") |>
+  separate(age_year, into = c("age", "year"), sep = "\\(") |>
+  mutate(
+    year = str_replace(year, "\\)", ""),
+    percent = str_replace(percent, "[a-c]$", ""),
+    percent = as.numeric(percent)) |>
+  filter(!(State %in% c("Total U.S.", "Northeast", "Midwest", "South", "West")))
+```
+
+```{r}
+marj_df |>
+  filter(age == "12-17") |> 
+  mutate(State = fct_reorder(State, percent)) |> 
+  ggplot(aes(x = State, y = percent, color = year)) + 
+    geom_point() + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+marj_df |>
+  filter(age == "12-17") |> 
+  mutate(State = fct_reorder(State, percent, .desc=TRUE)) |> 
+  ggplot(aes(x = State, y = percent, color = year)) + 
+    geom_point() + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+`fct_reorder` to get our States re-ordered by what we are mapping. In this case we are mapping percent, so we wanted it to be reordered by that
+
+`.desc=TRUE` allows me to reorder the opposite way
+
+## NYC Restaurant Inspections
+
+```{r}
+data("rest_inspec")
+
+rest_inspec |> 
+  count(boro, grade) |> 
+  pivot_wider(
+    names_from=grade,
+    values_from= n
+  ) |> 
+  knitr::kable()
+```
+
+```{r}
+inspection_df=
+  rest_inspec |> 
+  filter(grade %in% c("A", "B", "C"), boro != "Missing") |> 
+  mutate(
+    boro= str_to_title(boro),
+    dba= str_to_upper(dba))
+```
+
+Pizza places - pizza pizza (only those with pizza in title)
+```{r}
+inspection_df |> 
+  filter(str_detect(dba, "PIZZA")) |> 
+  count(boro)
+```
+
+```{r}
+inspection_df |> 
+  filter(str_detect(dba, "PIZZA")) |> 
+  mutate(boro= fct_infreq(boro)) |> 
+  ggplot(aes(x=boro, fill=grade))+
+  geom_bar()
+```
+`fct_infreq` reorders the factor by frequency. 
+
+```{r}
+inspection_df |> 
+  filter(str_detect(dba, "PIZZA")) |> 
+  mutate(
+    boro = fct_infreq(boro),
+    boro = str_replace(boro, "Manhattan", "The City"))|> 
+  ggplot(aes(x=boro, fill=grade))+
+  geom_bar()
+```
+Screws up the ordering above, also string replace made it weird since it is now a factor sort of
+
+```{r}
+inspection_df |> 
+  filter(str_detect(dba, "PIZZA")) |> 
+  mutate(
+    boro = fct_infreq(boro),
+    boro = replace(boro, which(boro == "Manhattan"), "The City"))|> 
+  ggplot(aes(x=boro, fill=grade))+
+  geom_bar()
+```
+
+```{r}
+inspection_df |> 
+  filter(str_detect(dba, "PIZZA")) |> 
+  mutate(
+    boro = fct_infreq(boro),
+    boro = fct_recode(boro, "The City" = "Manhattan"))|> 
+  ggplot(aes(x=boro, fill=grade))+
+  geom_bar()
+```
+
